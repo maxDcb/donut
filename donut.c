@@ -789,7 +789,7 @@ static int build_module(PDONUT_CONFIG c) {
       }
       // 
       // Copy parameters 
-      strncat(mod->args, c->args, DONUT_MAX_NAME-6);
+      strncat(mod->args, c->args, DONUT_MAX_NAME_ARG-6);
     }    
     DPRINT("Copying data to module");
     
@@ -1747,7 +1747,7 @@ const char *DonutError(int err) {
 
 #ifdef DONUT_EXE
 
-#define OPT_MAX_STRING 256
+#define OPT_MAX_STRING 2048
 
 #define OPT_TYPE_NONE   1
 #define OPT_TYPE_STRING 2

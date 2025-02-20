@@ -37,7 +37,7 @@ BOOL LoadAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
     DWORD           i;
     BOOL            loaded=FALSE, loadable;
     PBYTE           p;
-    WCHAR           buf[DONUT_MAX_NAME];
+    WCHAR           buf[DONUT_MAX_NAME_ARG];
     
     if(inst->api.CLRCreateInstance != NULL) {
       DPRINT("CLRCreateInstance");
@@ -167,7 +167,7 @@ BOOL RunAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
     ULONG         cnt;
     OLECHAR       str[1]={0};
     LONG          ucnt, lcnt;
-    WCHAR         **argv, buf[DONUT_MAX_NAME+1];
+    WCHAR         **argv, buf[DONUT_MAX_NAME_ARG+1];
     int           argc;
     
     DPRINT("Type is %s", 

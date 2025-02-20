@@ -84,7 +84,7 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
     LPVOID                      base, host;
     DWORD                       i, cnt;
     HANDLE                      hThread;
-    WCHAR                       buf[DONUT_MAX_NAME+1];
+    WCHAR                       buf[DONUT_MAX_NAME_ARG+1];
     DWORD                       size_of_img;
     PVOID                       baseAddress;
     SIZE_T                      numBytes;
