@@ -38,6 +38,7 @@ BOOL LoadAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
     BOOL            loaded=FALSE, loadable;
     PBYTE           p;
     WCHAR           buf[DONUT_MAX_NAME_ARG];
+    BOOL                 disabled;
     
     if(inst->api.CLRCreateInstance != NULL) {
       DPRINT("CLRCreateInstance");
@@ -73,6 +74,16 @@ BOOL LoadAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
         } else pa->icri = NULL;
       } else pa->icmh = NULL;
     }
+
+    // try bypassing AMSI, only when the CLR is loaded so it can find the actual stuff to patch
+    if(inst->bypass != DONUT_BYPASS_NONE) 
+    {
+      disabled = DisableAMSI(inst);
+      DPRINT("DisableAMSI %s", disabled ? "OK" : "FAILED");
+      if(!disabled && inst->bypass == DONUT_BYPASS_ABORT) 
+        return FALSE;
+    }
+
     // fall back on CorBindToRuntime when CLRCreateInstance isn't available
     // or for example when the above code failed.
     if(FAILED(hr) || inst->api.CLRCreateInstance == NULL) {

