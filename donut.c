@@ -567,9 +567,8 @@ static int read_file_info(PDONUT_CONFIG c) {
               break;
 
           default:
-              DPRINT("Unsupported CPU architecture: %d", cpu);
-              err = DONUT_ERROR_INVALID_ARCH;
-              goto cleanup;
+              fi.arch = DONUT_ARCH_X64;
+              break;
       }
       
       // if COM directory present
