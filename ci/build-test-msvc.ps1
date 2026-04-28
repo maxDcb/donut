@@ -97,8 +97,8 @@ $matrix = @{
     VsArch = "arm64"
     Makefile = "Makefile_arm64.msvc"
     DonutArch = "4"
-    RunDebugInstance = $false
-    RunReleaseLoader = $false
+    RunDebugInstance = $true
+    RunReleaseLoader = $true
     SmokeTestDonutExe = $true
   }
 }

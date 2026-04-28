@@ -2323,7 +2323,7 @@ int main(int argc, char *argv[]) {
     DONUT_CONFIG c;
     int          err;
     char         *mod_type;
-    char         *arch_str[3] = { "x86", "amd64", "x86+amd64" };
+    char         *arch_str[3] = { "x86", "amd64", "x86+amd64", "arm64" };
     char         *inst_type[2]= { "Embedded", "HTTP" };
     
     printf("\n");
