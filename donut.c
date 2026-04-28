@@ -190,9 +190,28 @@ static PIMAGE_FILE_HEADER FileHdr (void *map) {
     return &NtHdr(map)->FileHeader;
 }
 
-// determines CPU architecture of binary
-static int is32 (void *map) {
-    return FileHdr(map)->Machine == IMAGE_FILE_MACHINE_I386;
+// // determines CPU architecture of binary
+// static int is32 (void *map) {
+//     return FileHdr(map)->Machine == IMAGE_FILE_MACHINE_I386;
+// }
+
+// determines CPU architecture of PE binary
+static int pe_arch(void *map)
+{
+    switch (FileHdr(map)->Machine)
+    {
+        case IMAGE_FILE_MACHINE_I386:
+            return DONUT_ARCH_X86;
+
+        case IMAGE_FILE_MACHINE_AMD64:
+            return DONUT_ARCH_X64;
+
+        case IMAGE_FILE_MACHINE_ARM64:
+            return DONUT_ARCH_ARM64;
+
+        default:
+            return -1;
+    }
 }
 
 // return pointer to Optional header
@@ -200,11 +219,28 @@ static void* OptHdr (void *map) {
     return (void*)&NtHdr(map)->OptionalHeader;
 }
 
-static PIMAGE_DATA_DIRECTORY Dirs (void *map) {
-    if (is32(map)) {
-      return ((PIMAGE_OPTIONAL_HEADER32)OptHdr(map))->DataDirectory;
-    } else {
-      return ((PIMAGE_OPTIONAL_HEADER64)OptHdr(map))->DataDirectory;
+// static PIMAGE_DATA_DIRECTORY Dirs (void *map) {
+//     if (is32(map)) {
+//       return ((PIMAGE_OPTIONAL_HEADER32)OptHdr(map))->DataDirectory;
+//     } else {
+//       return ((PIMAGE_OPTIONAL_HEADER64)OptHdr(map))->DataDirectory;
+//     }
+// }
+
+static PIMAGE_DATA_DIRECTORY Dirs(void *map)
+{
+    WORD magic = ((PIMAGE_OPTIONAL_HEADER)OptHdr(map))->Magic;
+
+    switch (magic)
+    {
+        case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
+            return ((PIMAGE_OPTIONAL_HEADER32)OptHdr(map))->DataDirectory;
+
+        case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+            return ((PIMAGE_OPTIONAL_HEADER64)OptHdr(map))->DataDirectory;
+
+        default:
+            return NULL;
     }
 }
 
@@ -548,7 +584,7 @@ static int read_file_info(PDONUT_CONFIG c) {
       
       nt  = NtHdr(fi.data);
       dll = nt->FileHeader.Characteristics & IMAGE_FILE_DLL;
-      cpu = is32(fi.data);
+      cpu = pe_arch(fi.data);
       rva = dir[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress;
       
       // set the CPU architecture for file
