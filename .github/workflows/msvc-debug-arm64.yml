@@ -33,16 +33,14 @@ permissions:
 jobs:
   build-test:
     name: ${{ matrix.target }}
-    runs-on: windows-latest
+    runs-on: windows-11-arm
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x64
-            experimental: false
-          - target: x84
-            experimental: false
+          - target: arm64
+            experimental: true
 
     steps:
       - name: Checkout
