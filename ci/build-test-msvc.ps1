@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("x64", "x84", "arm64")]
+  [ValidateSet("x86", "x64", "x84", "arm64")]
   [string]$Target = "x64",
+
+  [ValidateSet("debug", "release")]
+  [string]$Configuration = "debug",
 
   [switch]$SkipRun
 )
@@ -9,7 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$OutDir = Join-Path $RepoRoot "ci\out\$Target"
+$OutDir = Join-Path $RepoRoot "ci\out\$Target\$Configuration"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Set-Location $RepoRoot
 
@@ -19,7 +22,7 @@ function Get-VsDevCmd {
     throw "vswhere.exe was not found at $vswhere"
   }
 
-  $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+  $installPath = & $vswhere -latest -products * -property installationPath
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($installPath)) {
     throw "Unable to locate a Visual Studio installation with MSVC tools"
   }
@@ -30,6 +33,24 @@ function Get-VsDevCmd {
   }
 
   return $vsDevCmd
+}
+
+function Invoke-StdInFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Command,
+    [Parameter(Mandatory = $true)][string]$Content
+  )
+
+  $stdinFile = Join-Path $RepoRoot "ci\stdin.txt"
+  Set-Content -Path $stdinFile -Value $Content -NoNewline
+  try {
+    & cmd.exe /s /c "$Command < `"$stdinFile`""
+    if ($LASTEXITCODE -ne 0) {
+      throw "Command failed with exit code $LASTEXITCODE`: $Command"
+    }
+  } finally {
+    Remove-Item -Force -ErrorAction SilentlyContinue $stdinFile
+  }
 }
 
 function Invoke-VsDevCmd {
@@ -48,37 +69,62 @@ function Invoke-VsDevCmd {
 }
 
 $matrix = @{
+  x86 = @{
+    VsArch = "x86"
+    Makefile = "Makefile_x86.msvc"
+    DonutArch = "1"
+    RunDebugInstance = $true
+    RunReleaseLoader = $true
+    SmokeTestDonutExe = $true
+  }
   x64 = @{
     VsArch = "amd64"
     Makefile = "Makefile.msvc"
     DonutArch = "2"
-    RunInstance = $true
+    RunDebugInstance = $true
+    RunReleaseLoader = $true
+    SmokeTestDonutExe = $true
   }
   x84 = @{
     VsArch = "amd64"
     Makefile = "Makefile.msvc"
     DonutArch = "3"
-    RunInstance = $true
+    RunDebugInstance = $true
+    RunReleaseLoader = $true
+    SmokeTestDonutExe = $true
   }
   arm64 = @{
     VsArch = "arm64"
     Makefile = "Makefile_arm64.msvc"
-    DonutArch = ""
-    RunInstance = $false
+    DonutArch = $null
+    RunDebugInstance = $false
+    RunReleaseLoader = $false
+    SmokeTestDonutExe = $true
   }
 }
 
 $cfg = $matrix[$Target]
+$makeTarget = if ($Configuration -eq "debug") { "debug" } else { "donut" }
 
 # Fail before touching generated files if the requested MSVC environment is not
 # available. The CI runner has a clean checkout; local runs often do not.
 Get-VsDevCmd | Out-Null
 
 Remove-Item -Force -ErrorAction SilentlyContinue `
-  "instance", "loader.bin", "loader.exe", "donut.exe", "donut_payload_ok.txt", `
-  (Join-Path $OutDir "hello.exe"), (Join-Path $OutDir "loader.bin"), (Join-Path $OutDir "instance")
+  "instance", "loader.bin", "loader.exe", "inject_local.exe", "donut.exe", "donut_payload_ok.txt", `
+  (Join-Path $OutDir "hello.exe"), (Join-Path $OutDir "loader.bin"), (Join-Path $OutDir "instance"), `
+  (Join-Path $OutDir "donut_payload_ok.txt")
 
-Invoke-VsDevCmd -Arch $cfg.VsArch -Command "nmake /nologo /f $($cfg.Makefile) debug"
+Invoke-VsDevCmd -Arch $cfg.VsArch -Command "nmake /nologo /f $($cfg.Makefile) $makeTarget"
+
+if ($cfg.SmokeTestDonutExe -and $Target -eq "arm64") {
+  & .\donut.exe
+  if ($LASTEXITCODE -ne 0) {
+    throw "arm64 donut.exe smoke test failed with exit code $LASTEXITCODE"
+  }
+  Write-Host "ARM64 $Configuration build completed. Runtime execution is skipped until Donut has a real ARM64 loader architecture."
+  exit 0
+}
 
 $helloExe = Join-Path $OutDir "hello.exe"
 Invoke-VsDevCmd -Arch $cfg.VsArch -Command "cl /nologo /W4 /WX /MT /O1 /Fe:`"$helloExe`" ci\hello.c"
@@ -86,20 +132,36 @@ Invoke-VsDevCmd -Arch $cfg.VsArch -Command "cl /nologo /W4 /WX /MT /O1 /Fe:`"$he
 $loaderBin = Join-Path $OutDir "loader.bin"
 Invoke-VsDevCmd -Arch $cfg.VsArch -Command ".\donut.exe -a $($cfg.DonutArch) -b 1 -e 1 -z 1 -x 1 -i `"$helloExe`" -o `"$loaderBin`""
 
-if (-not (Test-Path "instance")) {
-  throw "donut.exe did not create the debug instance file"
+if ($Configuration -eq "debug") {
+  if (-not (Test-Path "instance")) {
+    throw "donut.exe did not create the debug instance file"
+  }
+
+  Copy-Item -Force "instance" (Join-Path $OutDir "instance")
 }
 
-Copy-Item -Force "instance" (Join-Path $OutDir "instance")
-
-if ($SkipRun -or -not $cfg.RunInstance) {
+if ($SkipRun) {
   Write-Host "Skipping loader.exe instance execution."
   exit 0
 }
 
-cmd.exe /c "echo. | loader.exe instance"
-if ($LASTEXITCODE -ne 0) {
-  throw "loader.exe instance failed with exit code $LASTEXITCODE"
+if ($Configuration -eq "debug") {
+  if (-not $cfg.RunDebugInstance) {
+    Write-Host "Skipping debug runtime execution."
+    exit 0
+  }
+
+  & cmd.exe /s /c "echo. | loader.exe instance"
+  if ($LASTEXITCODE -ne 0) {
+    throw "loader.exe instance failed with exit code $LASTEXITCODE"
+  }
+} else {
+  if (-not $cfg.RunReleaseLoader) {
+    Write-Host "Skipping release runtime execution."
+    exit 0
+  }
+
+  Invoke-StdInFile -Command "inject_local.exe `"$loaderBin`"" -Content "`r`n`r`n"
 }
 
 if (-not (Test-Path "donut_payload_ok.txt")) {
@@ -107,4 +169,4 @@ if (-not (Test-Path "donut_payload_ok.txt")) {
 }
 
 Move-Item -Force "donut_payload_ok.txt" (Join-Path $OutDir "donut_payload_ok.txt")
-Write-Host "Donut $Target debug smoke test passed."
+Write-Host "Donut $Target $Configuration smoke test passed."
