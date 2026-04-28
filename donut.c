@@ -284,6 +284,8 @@ static ULONG64 rva2ofs (void *base, ULONG64 rva) {
 #include "mmap-windows.c"
 #endif
 
+
+
 /**
  * Function: map_file
  * ----------------------------
@@ -1299,6 +1301,11 @@ static int build_loader(PDONUT_CONFIG c) {
 
     uint8_t *pl;
     uint32_t t;
+    uint32_t arm64_pad = 0;
+
+    if(c->arch == DONUT_ARCH_ARM64) {
+      arm64_pad = (4 - ((8 + c->inst_len) & 3)) & 3;
+    }
     
     switch (c->arch)
     {
@@ -1325,8 +1332,11 @@ static int build_loader(PDONUT_CONFIG c) {
 
         // target is ARM64
         case DONUT_ARCH_ARM64:
-            c->pic_len = sizeof(LOADER_EXE_ARM64) +
-                        c->inst_len + 32;
+            c->pic_len = 8 +
+                        c->inst_len +
+                        arm64_pad +
+                        8 +
+                        sizeof(LOADER_EXE_ARM64);
             break;
 
         default:
@@ -1346,6 +1356,39 @@ static int build_loader(PDONUT_CONFIG c) {
     
     // insert shellcode
     pl = (uint8_t*)c->pic;
+
+    if(c->arch == DONUT_ARCH_ARM64)
+    {
+      uint32_t target = 8 + c->inst_len + arm64_pad;
+      uint32_t imm26 = (target - 4) >> 2;
+
+      if((target & 3) != 0 || imm26 > 0x01FFFFFF) {
+        DPRINT("ARM64 loader target is out of range: %" PRIu32, target);
+        free(c->pic);
+        c->pic = NULL;
+        c->pic_len = 0;
+        return DONUT_ERROR_INVALID_ARCH;
+      }
+
+      DPRINT("Copying %" PRIi32 " bytes of arm64 shellcode",
+        (uint32_t)sizeof(LOADER_EXE_ARM64));
+
+      // mov x1, x30; preserve the caller's return address.
+      PUT_WORD(pl, 0xAA1E03E1);
+      // bl after_instance; x30 receives the address of the embedded instance.
+      PUT_WORD(pl, 0x94000000 | imm26);
+      PUT_BYTES(pl, c->inst, c->inst_len);
+      while(arm64_pad-- != 0) {
+        PUT_BYTE(pl, 0x00);
+      }
+      // mov x0, x30; Windows ARM64 passes the first argument in x0.
+      PUT_WORD(pl, 0xAA1E03E0);
+      // mov x30, x1; restore the caller's return address.
+      PUT_WORD(pl, 0xAA0103FE);
+      PUT_BYTES(pl, LOADER_EXE_ARM64, sizeof(LOADER_EXE_ARM64));
+
+      return DONUT_ERROR_OK;
+    }
     
     // call $ + c->inst_len
     PUT_BYTE(pl,  0xE8);
@@ -1408,37 +1451,6 @@ static int build_loader(PDONUT_CONFIG c) {
       // push edx
       PUT_BYTE(pl, 0x52);
       PUT_BYTES(pl, LOADER_EXE_X86, sizeof(LOADER_EXE_X86));
-    }
-    else if(c->arch == DONUT_ARCH_ARM64) 
-    {
-      
-      // TODO
-
-      // DPRINT("Copying %" PRIi32 " bytes of x86 + amd64 shellcode",
-      //   (uint32_t)(sizeof(LOADER_EXE_X86) + sizeof(LOADER_EXE_X64)));
-        
-      // // xor eax, eax
-      // PUT_BYTE(pl, 0x31);
-      // PUT_BYTE(pl, 0xC0);
-      // // dec eax
-      // PUT_BYTE(pl, 0x48);
-      // // js dword x86_code
-      // PUT_BYTE(pl, 0x0F);
-      // PUT_BYTE(pl, 0x88);
-      // PUT_WORD(pl,  sizeof(LOADER_EXE_X64_RSP_ALIGN) + sizeof(LOADER_EXE_X64));
-      
-      // // ensure stack is 16-byte aligned for x64 for Microsoft x64 calling convention
-      
-
-      // PUT_BYTES(pl, LOADER_EXE_X64_RSP_ALIGN, sizeof(LOADER_EXE_X64_RSP_ALIGN));
-      // PUT_BYTES(pl, LOADER_EXE_X64, sizeof(LOADER_EXE_X64));
-      // // pop edx
-      // PUT_BYTE(pl, 0x5A);
-      // // push ecx
-      // PUT_BYTE(pl, 0x51);
-      // // push edx
-      // PUT_BYTE(pl, 0x52);
-      // PUT_BYTES(pl, LOADER_EXE_X86, sizeof(LOADER_EXE_X86));
     }
 
     return DONUT_ERROR_OK;
@@ -2473,4 +2485,3 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 #endif
-
