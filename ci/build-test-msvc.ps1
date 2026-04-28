@@ -117,15 +117,6 @@ Remove-Item -Force -ErrorAction SilentlyContinue `
 
 Invoke-VsDevCmd -Arch $cfg.VsArch -Command "nmake /nologo /f $($cfg.Makefile) $makeTarget"
 
-if ($cfg.SmokeTestDonutExe -and $Target -eq "arm64") {
-  & .\donut.exe
-  if ($LASTEXITCODE -ne 0) {
-    throw "arm64 donut.exe smoke test failed with exit code $LASTEXITCODE"
-  }
-  Write-Host "ARM64 $Configuration build completed. Runtime execution is skipped until Donut has a real ARM64 loader architecture."
-  exit 0
-}
-
 $helloExe = Join-Path $OutDir "hello.exe"
 Invoke-VsDevCmd -Arch $cfg.VsArch -Command "cl /nologo /W4 /WX /MT /O1 /Fe:`"$helloExe`" ci\hello.c"
 

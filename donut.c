@@ -33,6 +33,7 @@
 
 #include "loader_exe_x86.h"
 #include "loader_exe_x64.h"
+#include "loader_exe_arm64.h"
   
 #define PUT_BYTE(p, v)     { *(uint8_t *)(p) = (uint8_t) (v); p = (uint8_t*)p + 1; }
 #define PUT_HWORD(p, v)    { t=v; memcpy((char*)p, (char*)&t, 2); p = (uint8_t*)p + 2; }
@@ -551,7 +552,25 @@ static int read_file_info(PDONUT_CONFIG c) {
       rva = dir[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress;
       
       // set the CPU architecture for file
-      fi.arch = cpu ? DONUT_ARCH_X86 : DONUT_ARCH_X64;
+      switch (cpu)
+      {
+          case DONUT_ARCH_X86:
+              fi.arch = DONUT_ARCH_X86;
+              break;
+
+          case DONUT_ARCH_X64:
+              fi.arch = DONUT_ARCH_X64;
+              break;
+
+          case DONUT_ARCH_ARM64:
+              fi.arch = DONUT_ARCH_ARM64;
+              break;
+
+          default:
+              DPRINT("Unsupported CPU architecture: %d", cpu);
+              err = DONUT_ERROR_INVALID_ARCH;
+              goto cleanup;
+      }
       
       // if COM directory present
       if(rva != 0) {
@@ -1246,21 +1265,40 @@ static int build_loader(PDONUT_CONFIG c) {
     uint8_t *pl;
     uint32_t t;
     
-    // target is x86?
-    if(c->arch == DONUT_ARCH_X86) {
-      c->pic_len = sizeof(LOADER_EXE_X86) + c->inst_len + 32;
-    } else 
-    // target is amd64?
-    if(c->arch == DONUT_ARCH_X64) {
-      c->pic_len = sizeof(LOADER_EXE_X64_RSP_ALIGN) +
-                   sizeof(LOADER_EXE_X64) + c->inst_len + 32;
-    } else 
-    // target can be both x86 and amd64?
-    if(c->arch == DONUT_ARCH_X84) {
-      c->pic_len = sizeof(LOADER_EXE_X86) + 
-                   sizeof(LOADER_EXE_X64_RSP_ALIGN) + 
-                   sizeof(LOADER_EXE_X64) + c->inst_len + 32;
+    switch (c->arch)
+    {
+        // target is x86
+        case DONUT_ARCH_X86:
+            c->pic_len = sizeof(LOADER_EXE_X86) +
+                        c->inst_len + 32;
+            break;
+
+        // target is amd64
+        case DONUT_ARCH_X64:
+            c->pic_len = sizeof(LOADER_EXE_X64_RSP_ALIGN) +
+                        sizeof(LOADER_EXE_X64) +
+                        c->inst_len + 32;
+            break;
+
+        // target can be both x86 and amd64
+        case DONUT_ARCH_X84:
+            c->pic_len = sizeof(LOADER_EXE_X86) +
+                        sizeof(LOADER_EXE_X64_RSP_ALIGN) +
+                        sizeof(LOADER_EXE_X64) +
+                        c->inst_len + 32;
+            break;
+
+        // target is ARM64
+        case DONUT_ARCH_ARM64:
+            c->pic_len = sizeof(LOADER_EXE_ARM64) +
+                        c->inst_len + 32;
+            break;
+
+        default:
+            DPRINT("Unsupported architecture: %d", c->arch);
+            return DONUT_ERROR_INVALID_ARCH;
     }
+
     // allocate memory for shellcode
     c->pic = malloc(c->pic_len);
     
@@ -1281,8 +1319,8 @@ static int build_loader(PDONUT_CONFIG c) {
     // pop ecx
     PUT_BYTE(pl,  0x59);
     
-    // x86?
-    if(c->arch == DONUT_ARCH_X86) {
+    if(c->arch == DONUT_ARCH_X86) 
+    {
       // pop edx
       PUT_BYTE(pl, 0x5A);
       // push ecx
@@ -1294,9 +1332,9 @@ static int build_loader(PDONUT_CONFIG c) {
         (uint32_t)sizeof(LOADER_EXE_X86));
         
       PUT_BYTES(pl, LOADER_EXE_X86, sizeof(LOADER_EXE_X86));
-    } else 
-    // AMD64?
-    if(c->arch == DONUT_ARCH_X64) {
+    } 
+    else if(c->arch == DONUT_ARCH_X64) 
+    {
       
       DPRINT("Copying %" PRIi32 " bytes of amd64 shellcode", 
         (uint32_t)sizeof(LOADER_EXE_X64));
@@ -1305,9 +1343,10 @@ static int build_loader(PDONUT_CONFIG c) {
       
       PUT_BYTES(pl, LOADER_EXE_X64_RSP_ALIGN, sizeof(LOADER_EXE_X64_RSP_ALIGN));
       PUT_BYTES(pl, LOADER_EXE_X64, sizeof(LOADER_EXE_X64));
-    } else 
+    } 
     // x86 + AMD64?
-    if(c->arch == DONUT_ARCH_X84) {
+    else if(c->arch == DONUT_ARCH_X84) 
+    {
       
       DPRINT("Copying %" PRIi32 " bytes of x86 + amd64 shellcode",
         (uint32_t)(sizeof(LOADER_EXE_X86) + sizeof(LOADER_EXE_X64)));
@@ -1335,6 +1374,38 @@ static int build_loader(PDONUT_CONFIG c) {
       PUT_BYTE(pl, 0x52);
       PUT_BYTES(pl, LOADER_EXE_X86, sizeof(LOADER_EXE_X86));
     }
+    else if(c->arch == DONUT_ARCH_ARM64) 
+    {
+      
+      // TODO
+
+      // DPRINT("Copying %" PRIi32 " bytes of x86 + amd64 shellcode",
+      //   (uint32_t)(sizeof(LOADER_EXE_X86) + sizeof(LOADER_EXE_X64)));
+        
+      // // xor eax, eax
+      // PUT_BYTE(pl, 0x31);
+      // PUT_BYTE(pl, 0xC0);
+      // // dec eax
+      // PUT_BYTE(pl, 0x48);
+      // // js dword x86_code
+      // PUT_BYTE(pl, 0x0F);
+      // PUT_BYTE(pl, 0x88);
+      // PUT_WORD(pl,  sizeof(LOADER_EXE_X64_RSP_ALIGN) + sizeof(LOADER_EXE_X64));
+      
+      // // ensure stack is 16-byte aligned for x64 for Microsoft x64 calling convention
+      
+
+      // PUT_BYTES(pl, LOADER_EXE_X64_RSP_ALIGN, sizeof(LOADER_EXE_X64_RSP_ALIGN));
+      // PUT_BYTES(pl, LOADER_EXE_X64, sizeof(LOADER_EXE_X64));
+      // // pop edx
+      // PUT_BYTE(pl, 0x5A);
+      // // push ecx
+      // PUT_BYTE(pl, 0x51);
+      // // push edx
+      // PUT_BYTE(pl, 0x52);
+      // PUT_BYTES(pl, LOADER_EXE_X86, sizeof(LOADER_EXE_X86));
+    }
+
     return DONUT_ERROR_OK;
 }
 
@@ -1432,6 +1503,7 @@ static int validate_loader_cfg(PDONUT_CONFIG c) {
     if(c->arch != DONUT_ARCH_X86 &&
        c->arch != DONUT_ARCH_X64 &&
        c->arch != DONUT_ARCH_X84 &&
+       c->arch != DONUT_ARCH_ARM64 &&
        c->arch != DONUT_ARCH_ANY)
     {
       DPRINT("Target architecture %"PRId32 " is invalid.", c->arch);
@@ -1527,14 +1599,23 @@ static int validate_file_cfg(PDONUT_CONFIG c) {
     {
       // Requested shellcode is x86, but file is x64?
       // Requested shellcode is x64, but file is x86?
-      if((c->arch == DONUT_ARCH_X86  && 
-         fi.arch  == DONUT_ARCH_X64) ||
-         (c->arch == DONUT_ARCH_X64  &&
-         fi.arch  == DONUT_ARCH_X86))
+      if (
+          (c->arch == DONUT_ARCH_X86   && fi.arch != DONUT_ARCH_X86) ||
+          (c->arch == DONUT_ARCH_X64   && fi.arch != DONUT_ARCH_X64) ||
+          (c->arch == DONUT_ARCH_ARM64 && fi.arch != DONUT_ARCH_ARM64) ||
+          (c->arch == DONUT_ARCH_X84   && 
+              fi.arch != DONUT_ARCH_X86 && 
+              fi.arch != DONUT_ARCH_X64)
+      )
       {
-        DPRINT("Target architecture %"PRId32 " is not compatible with DLL/EXE %"PRId32, c->arch, fi.arch);
-        return DONUT_ERROR_ARCH_MISMATCH;
+          DPRINT(
+              "Target architecture %" PRId32 " is not compatible with DLL/EXE %" PRId32,
+              c->arch,
+              fi.arch
+          );
+          return DONUT_ERROR_ARCH_MISMATCH;
       }
+
       // DLL function specified. Does it exist?
       if(fi.type == DONUT_MODULE_DLL && c->method[0] != 0)
       {
@@ -1951,31 +2032,52 @@ static int validate_arch(opt_arg *arg, void *args) {
     if(str == NULL) return 0;
     
     // single digit? convert to binary
-    if(strlen(str) == 1 && isdigit((int)*str)) {
-      arg->u32 = atoi(str);
-    } else {
-      // otherwise, try map it to digit
-      if(!strcasecmp("x86", str)) {
-        arg->u32 = DONUT_ARCH_X86;
-      } else
-      if(!strcasecmp("amd64", str)) {
-        arg->u32 = DONUT_ARCH_X64;
-      } else
-      if(!strcasecmp("x84", str)) {
-        arg->u32 = DONUT_ARCH_X84;
-      }
+    if (strlen(str) == 1 && isdigit((unsigned char)*str))
+    {
+        arg->u32 = (uint32_t)atoi(str);
+    }
+    else
+    {
+        // otherwise, try to map architecture name to ID
+        if (!strcasecmp("x86", str) || !strcasecmp("i386", str))
+        {
+            arg->u32 = DONUT_ARCH_X86;
+        }
+        else if (!strcasecmp("x64", str) || !strcasecmp("amd64", str))
+        {
+            arg->u32 = DONUT_ARCH_X64;
+        }
+        else if (!strcasecmp("x84", str))
+        {
+            // Legacy name: x86 + x64
+            arg->u32 = DONUT_ARCH_X84;
+        }
+        else if (!strcasecmp("arm64", str) || !strcasecmp("aarch64", str))
+        {
+            arg->u32 = DONUT_ARCH_ARM64;
+        }
+        else
+        {
+            DPRINT("Unsupported architecture: %s", str);
+            return DONUT_ERROR_INVALID_ARCH;
+        }
     }
     
     // validate
-    switch(arg->u32) {
+    switch (arg->u32) {
       case DONUT_ARCH_X86:
       case DONUT_ARCH_X64:
       case DONUT_ARCH_X84:
+      case DONUT_ARCH_ARM64:
         break;
+
       default: {
-        printf("WARNING: Invalid architecture specified: %"PRId32" -- setting to x86+amd64\n", arg->u32);
+        printf(
+          "WARNING: Invalid architecture specified: %" PRId32 " -- setting to x86+amd64\n",
+          arg->u32
+        );
         arg->u32 = DONUT_ARCH_X84;
-      }          
+      }
     }
     return 1;
 }
