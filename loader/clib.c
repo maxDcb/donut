@@ -88,12 +88,14 @@ int memcmp(const void *a, const void *b, size_t len)
 
 void *Memset(void *ptr, int value, uint32_t num)
 {
-    return memset(ptr, value, (size_t)num);
+    memset(ptr, value, (size_t)num);
+    return NULL;
 }
 
 void *Memcpy(void *dst, const void *src, size_t len)
 {
-    return memcpy(dst, src, len);
+    memcpy(dst, src, len);
+    return NULL;
 }
 
 int compare(const char *s1, const char *s2) 
