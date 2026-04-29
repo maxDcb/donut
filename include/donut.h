@@ -116,6 +116,7 @@ typedef struct _GUID {
 #define DONUT_ARCH_X86                   1  // x86
 #define DONUT_ARCH_X64                   2  // AMD64
 #define DONUT_ARCH_X84                   3  // x86 + AMD64
+#define DONUT_ARCH_ARM64                 4  // ARM64
 
 // module type
 #define DONUT_MODULE_NET_DLL             1  // .NET DLL. Requires class and method
