@@ -1038,6 +1038,7 @@ static int build_instance(PDONUT_CONFIG c) {
       strcpy(inst->etwEventUnregister, "EtwEventUnregister");
       strcpy(inst->etwRet64, "\x48\x33\xc0\xc3");
       strcpy(inst->etwRet32, "\x33\xc0\xc2\x14\x00");
+      strcpy(inst->etwRetArm, "\x00\x00\x80\x52\xc0\x03\x5f\xd6");
     }
     
     // if module is an unmanaged EXE

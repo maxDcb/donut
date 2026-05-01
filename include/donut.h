@@ -373,6 +373,7 @@ typedef struct _DONUT_INSTANCE {
     char        etwEventUnregister[20];       // EtwEventUnregister
     char        etwRet64[4];                  // "ret" instruction for Etw
     char        etwRet32[5];                  // "ret 14h" instruction for Etw
+    char        etwRetArm[8];                 // mov w0, #0; ret
     
     char        wscript[8];                   // WScript
     char        wscript_exe[12];              // wscript.exe

